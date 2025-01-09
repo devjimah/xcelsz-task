@@ -1,12 +1,14 @@
 const db = require('../models');
 const { Meeting, Notification } = db;
+const { Op } = db.Sequelize;
+const { startOfDay, endOfDay, addMinutes, format, parseISO, zonedTimeToUtc, utcToZonedTime } = require('date-fns-tz');
 
 exports.getMeetings = async (req, res) => {
   try {
     const { userId } = req.query;
     const meetings = await Meeting.findAll({
       where: {
-        [db.Sequelize.Op.or]: [
+        [Op.or]: [
           { hostId: userId },
           { participantId: userId }
         ]
@@ -103,9 +105,80 @@ exports.deleteMeeting = async (req, res) => {
     });
 
     await meeting.destroy();
-    res.status(204).end();
+    res.json({ message: 'Meeting deleted successfully' });
   } catch (error) {
     console.error('Error deleting meeting:', error);
     res.status(500).json({ error: 'Failed to delete meeting' });
+  }
+};
+
+exports.getAvailability = async (req, res) => {
+  try {
+    const { userId, date, timezone = 'UTC' } = req.query;
+    const selectedDate = parseISO(date);
+    
+    // Convert start and end of day to UTC based on user's timezone
+    const zonedStartOfDay = startOfDay(selectedDate);
+    const zonedEndOfDay = endOfDay(selectedDate);
+    const utcStartOfDay = zonedTimeToUtc(zonedStartOfDay, timezone);
+    const utcEndOfDay = zonedTimeToUtc(zonedEndOfDay, timezone);
+
+    // Get all meetings for the user on the selected date
+    const meetings = await Meeting.findAll({
+      where: {
+        [Op.or]: [
+          { hostId: userId },
+          { participantId: userId }
+        ],
+        startTime: {
+          [Op.between]: [utcStartOfDay, utcEndOfDay]
+        }
+      },
+      order: [['startTime', 'ASC']]
+    });
+
+    // Define business hours (9 AM to 5 PM) in user's timezone
+    const businessStart = 9;
+    const businessEnd = 17;
+    const slotDuration = 30; // minutes
+    const availableSlots = [];
+
+    // Generate all possible time slots in user's timezone
+    let currentTime = utcToZonedTime(utcStartOfDay, timezone);
+    currentTime.setHours(businessStart, 0, 0, 0);
+    const endTime = new Date(currentTime);
+    endTime.setHours(businessEnd, 0, 0, 0);
+
+    while (currentTime < endTime) {
+      const slotEndTime = addMinutes(currentTime, slotDuration);
+      
+      // Convert slot times to UTC for comparison with meetings
+      const utcSlotStart = zonedTimeToUtc(currentTime, timezone);
+      const utcSlotEnd = zonedTimeToUtc(slotEndTime, timezone);
+
+      // Check if slot conflicts with any existing meeting
+      const isConflict = meetings.some(meeting => {
+        const meetingStart = new Date(meeting.startTime);
+        const meetingEnd = addMinutes(meetingStart, meeting.duration);
+        return (
+          (utcSlotStart >= meetingStart && utcSlotStart < meetingEnd) ||
+          (utcSlotEnd > meetingStart && utcSlotEnd <= meetingEnd)
+        );
+      });
+
+      if (!isConflict) {
+        availableSlots.push({
+          startTime: utcSlotStart.toISOString(),
+          endTime: utcSlotEnd.toISOString()
+        });
+      }
+
+      currentTime = slotEndTime;
+    }
+
+    res.json({ availableSlots });
+  } catch (error) {
+    console.error('Error getting availability:', error);
+    res.status(500).json({ error: 'Failed to get availability' });
   }
 };

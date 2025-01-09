@@ -24,13 +24,15 @@ export default function AvailabilityPicker({ onTimeSelect, userId }) {
     setLoading(true);
     setError('');
     try {
+      const formattedDate = format(date, 'yyyy-MM-dd');
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const data = await apiClient.get(
-        `meetings/availability?userId=${userId}&date=${date.toISOString()}&timezone=${timezone}`
+      const { data } = await apiClient.get(
+        `meetings/availability?userId=${userId}&date=${formattedDate}&timezone=${timezone}`
       );
-      setAvailableSlots(data.availableSlots);
+      setAvailableSlots(data.availableSlots || []);
     } catch (err) {
-      setError(err.message || 'Failed to fetch availability');
+      console.error('Error fetching availability:', err);
+      setError('Failed to fetch available time slots');
       setAvailableSlots([]);
     } finally {
       setLoading(false);
@@ -41,10 +43,12 @@ export default function AvailabilityPicker({ onTimeSelect, userId }) {
     if (selectedDate) {
       fetchAvailability(selectedDate);
     }
-  }, [selectedDate]);
+  }, [selectedDate, userId]);
 
   const handleDateChange = (newDate) => {
-    setSelectedDate(newDate);
+    if (newDate) {
+      setSelectedDate(newDate);
+    }
   };
 
   const handleTimeSelect = (slot) => {
@@ -52,22 +56,15 @@ export default function AvailabilityPicker({ onTimeSelect, userId }) {
   };
 
   return (
-    <Box sx={{ width: '100%', maxWidth: 800 }}>
+    <Box sx={{ width: '100%', mt: 2 }}>
       <LocalizationProvider dateAdapter={AdapterDateFns}>
-        <Box mb={3}>
-          <DatePicker
-            label="Select Date"
-            value={selectedDate}
-            onChange={handleDateChange}
-            disablePast
-            slotProps={{
-              textField: {
-                fullWidth: true,
-                sx: { '& .MuiOutlinedInput-root': { borderRadius: 2 } }
-              }
-            }}
-          />
-        </Box>
+        <DatePicker
+          label="Select Date"
+          value={selectedDate}
+          onChange={handleDateChange}
+          disablePast
+          sx={{ width: '100%', mb: 3 }}
+        />
       </LocalizationProvider>
 
       {error && (
@@ -76,45 +73,48 @@ export default function AvailabilityPicker({ onTimeSelect, userId }) {
         </Alert>
       )}
 
+      <Typography variant="h6" sx={{ mb: 2 }}>
+        Available Time Slots for {format(selectedDate, 'MMMM d, yyyy')}
+      </Typography>
+
       {loading ? (
-        <Box display="flex" justifyContent="center" my={4}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
           <CircularProgress />
         </Box>
+      ) : availableSlots.length > 0 ? (
+        <Grid container spacing={2}>
+          {availableSlots.map((slot, index) => (
+            <Grid item xs={12} sm={6} md={4} key={index}>
+              <Button
+                variant="outlined"
+                fullWidth
+                onClick={() => handleTimeSelect(slot)}
+                sx={{
+                  py: 2,
+                  textTransform: 'none',
+                  '&:hover': {
+                    backgroundColor: 'primary.light',
+                    color: 'primary.contrastText',
+                  }
+                }}
+              >
+                {format(new Date(slot.startTime), 'h:mm a')}
+              </Button>
+            </Grid>
+          ))}
+        </Grid>
       ) : (
-        <>
-          <Typography variant="h6" gutterBottom>
-            Available Time Slots for {format(selectedDate, 'MMMM d, yyyy')}
+        <Paper 
+          sx={{ 
+            p: 3, 
+            textAlign: 'center',
+            bgcolor: 'grey.50'
+          }}
+        >
+          <Typography color="text.secondary">
+            No available time slots for this date
           </Typography>
-
-          <Grid container spacing={2}>
-            {availableSlots.map((slot) => (
-              <Grid item xs={12} sm={6} md={4} key={slot.startTime}>
-                <Paper
-                  sx={{
-                    p: 2,
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    transition: 'background-color 0.2s',
-                    '&:hover': {
-                      bgcolor: 'action.hover',
-                    },
-                  }}
-                  onClick={() => handleTimeSelect(slot)}
-                >
-                  <Typography variant="body1">
-                    {format(new Date(slot.startTime), 'h:mm a')}
-                  </Typography>
-                </Paper>
-              </Grid>
-            ))}
-          </Grid>
-
-          {availableSlots.length === 0 && !loading && (
-            <Typography color="text.secondary" align="center" sx={{ mt: 2 }}>
-              No available time slots for this date
-            </Typography>
-          )}
-        </>
+        </Paper>
       )}
     </Box>
   );
