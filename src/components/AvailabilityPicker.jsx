@@ -25,8 +25,12 @@ export default function AvailabilityPicker({ onTimeSelect, userId }) {
     setError('');
     try {
       const formattedDate = format(date, 'yyyy-MM-dd');
-      const { data } = await apiClient.get(`meetings/availability?userId=${userId}&date=${formattedDate}`);
-      setAvailableSlots(data.availableSlots || []);
+      const response = await apiClient.get(`meetings/availability?userId=${userId}&date=${formattedDate}`);
+      console.log('API Response:', response); // Debug log
+      
+      // Safely access the data and handle potential undefined values
+      const slots = response?.data?.availableSlots || [];
+      setAvailableSlots(slots);
     } catch (err) {
       console.error('Error fetching availability:', err);
       setError('Failed to fetch available time slots');
@@ -37,7 +41,7 @@ export default function AvailabilityPicker({ onTimeSelect, userId }) {
   };
 
   useEffect(() => {
-    if (selectedDate) {
+    if (selectedDate && userId) {
       fetchAvailability(selectedDate);
     }
   }, [selectedDate, userId]);
@@ -49,7 +53,9 @@ export default function AvailabilityPicker({ onTimeSelect, userId }) {
   };
 
   const handleTimeSelect = (slot) => {
-    onTimeSelect(parseISO(slot.startTime));
+    if (slot?.startTime) {
+      onTimeSelect(parseISO(slot.startTime));
+    }
   };
 
   return (
