@@ -2,32 +2,18 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const db = require('./models');
+const meetingsRouter = require('./routes/meetings');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
-
-// CORS configuration
-const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://xcelsz-task.vercel.app', 'http://localhost:3000'] 
-    : 'http://localhost:3000',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-};
+const port = process.env.PORT || 10000;
 
 // Middleware
-app.use(cors(corsOptions));
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Root route
-app.get('/', (req, res) => {
-  res.json({ message: 'Welcome to XcelSz API' });
-});
-
 // Routes
-app.use('/api/meetings', require('./routes/meetings'));
+app.use('/api/meetings', meetingsRouter);
 app.use('/api/notifications', require('./routes/notifications'));
 
 // Error handling middleware
@@ -38,7 +24,7 @@ app.use((err, req, res, next) => {
 
 // Start server
 db.sequelize.sync().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+  app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
   });
 });
