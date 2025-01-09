@@ -1,8 +1,7 @@
 const db = require('../models');
 const { Meeting, Notification } = db;
 const { Op } = db.Sequelize;
-const { zonedTimeToUtc, utcToZonedTime } = require('date-fns-tz');
-const { startOfDay, endOfDay, addMinutes, format, parseISO } = require('date-fns');
+const { startOfDay, endOfDay, addMinutes, parseISO, addHours, subHours } = require('date-fns');
 
 exports.getMeetings = async (req, res) => {
   try {
@@ -115,16 +114,12 @@ exports.deleteMeeting = async (req, res) => {
 
 exports.getAvailability = async (req, res) => {
   try {
-    const { userId, date, timezone = 'UTC' } = req.query;
-    
-    // Parse the date and get start/end of day in user's timezone
+    const { userId, date } = req.query;
     const selectedDate = parseISO(date);
+    
+    // Get the start and end of the selected date
     const dayStart = startOfDay(selectedDate);
     const dayEnd = endOfDay(selectedDate);
-    
-    // Convert to UTC for database query
-    const utcStart = zonedTimeToUtc(dayStart, timezone);
-    const utcEnd = zonedTimeToUtc(dayEnd, timezone);
 
     // Get all meetings for the user on the selected date
     const meetings = await Meeting.findAll({
@@ -134,48 +129,45 @@ exports.getAvailability = async (req, res) => {
           { participantId: userId }
         ],
         startTime: {
-          [Op.between]: [utcStart, utcEnd]
+          [Op.between]: [dayStart, dayEnd]
         }
       },
       order: [['startTime', 'ASC']]
     });
 
-    // Generate time slots in user's timezone
-    const businessStart = 9; // 9 AM
-    const businessEnd = 17;  // 5 PM
-    const slotDuration = 30; // 30 minutes
+    // Business hours: 9 AM to 5 PM
+    const businessStart = 9;
+    const businessEnd = 17;
+    const slotDuration = 30; // minutes
     const availableSlots = [];
 
-    // Start time in user's timezone
+    // Set up the start time at 9 AM
     let currentTime = new Date(selectedDate);
     currentTime.setHours(businessStart, 0, 0, 0);
     
-    // End time in user's timezone
+    // Set up the end time at 5 PM
     const endTime = new Date(selectedDate);
     endTime.setHours(businessEnd, 0, 0, 0);
 
+    // Generate 30-minute slots
     while (currentTime < endTime) {
       const slotEnd = addMinutes(currentTime, slotDuration);
-      
-      // Convert current slot to UTC for comparison
-      const slotStartUTC = zonedTimeToUtc(currentTime, timezone);
-      const slotEndUTC = zonedTimeToUtc(slotEnd, timezone);
 
-      // Check for conflicts
+      // Check if this slot conflicts with any existing meetings
       const hasConflict = meetings.some(meeting => {
         const meetingStart = new Date(meeting.startTime);
         const meetingEnd = addMinutes(meetingStart, meeting.duration);
         
         return (
-          (slotStartUTC >= meetingStart && slotStartUTC < meetingEnd) ||
-          (slotEndUTC > meetingStart && slotEndUTC <= meetingEnd)
+          (currentTime >= meetingStart && currentTime < meetingEnd) ||
+          (slotEnd > meetingStart && slotEnd <= meetingEnd)
         );
       });
 
       if (!hasConflict) {
         availableSlots.push({
-          startTime: slotStartUTC.toISOString(),
-          endTime: slotEndUTC.toISOString()
+          startTime: currentTime.toISOString(),
+          endTime: slotEnd.toISOString()
         });
       }
 
