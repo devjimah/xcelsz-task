@@ -1,7 +1,8 @@
 const db = require('../models');
 const { Meeting, Notification } = db;
 const { Op } = db.Sequelize;
-const { startOfDay, endOfDay, addMinutes, format, parseISO, zonedTimeToUtc, utcToZonedTime } = require('date-fns-tz');
+const { zonedTimeToUtc, utcToZonedTime } = require('date-fns-tz');
+const { startOfDay, endOfDay, addMinutes, format, parseISO } = require('date-fns');
 
 exports.getMeetings = async (req, res) => {
   try {
@@ -115,13 +116,15 @@ exports.deleteMeeting = async (req, res) => {
 exports.getAvailability = async (req, res) => {
   try {
     const { userId, date, timezone = 'UTC' } = req.query;
-    const selectedDate = parseISO(date);
     
-    // Convert start and end of day to UTC based on user's timezone
-    const zonedStartOfDay = startOfDay(selectedDate);
-    const zonedEndOfDay = endOfDay(selectedDate);
-    const utcStartOfDay = zonedTimeToUtc(zonedStartOfDay, timezone);
-    const utcEndOfDay = zonedTimeToUtc(zonedEndOfDay, timezone);
+    // Parse the date and get start/end of day in user's timezone
+    const selectedDate = parseISO(date);
+    const dayStart = startOfDay(selectedDate);
+    const dayEnd = endOfDay(selectedDate);
+    
+    // Convert to UTC for database query
+    const utcStart = zonedTimeToUtc(dayStart, timezone);
+    const utcEnd = zonedTimeToUtc(dayEnd, timezone);
 
     // Get all meetings for the user on the selected date
     const meetings = await Meeting.findAll({
@@ -131,49 +134,52 @@ exports.getAvailability = async (req, res) => {
           { participantId: userId }
         ],
         startTime: {
-          [Op.between]: [utcStartOfDay, utcEndOfDay]
+          [Op.between]: [utcStart, utcEnd]
         }
       },
       order: [['startTime', 'ASC']]
     });
 
-    // Define business hours (9 AM to 5 PM) in user's timezone
-    const businessStart = 9;
-    const businessEnd = 17;
-    const slotDuration = 30; // minutes
+    // Generate time slots in user's timezone
+    const businessStart = 9; // 9 AM
+    const businessEnd = 17;  // 5 PM
+    const slotDuration = 30; // 30 minutes
     const availableSlots = [];
 
-    // Generate all possible time slots in user's timezone
-    let currentTime = utcToZonedTime(utcStartOfDay, timezone);
+    // Start time in user's timezone
+    let currentTime = new Date(selectedDate);
     currentTime.setHours(businessStart, 0, 0, 0);
-    const endTime = new Date(currentTime);
+    
+    // End time in user's timezone
+    const endTime = new Date(selectedDate);
     endTime.setHours(businessEnd, 0, 0, 0);
 
     while (currentTime < endTime) {
-      const slotEndTime = addMinutes(currentTime, slotDuration);
+      const slotEnd = addMinutes(currentTime, slotDuration);
       
-      // Convert slot times to UTC for comparison with meetings
-      const utcSlotStart = zonedTimeToUtc(currentTime, timezone);
-      const utcSlotEnd = zonedTimeToUtc(slotEndTime, timezone);
+      // Convert current slot to UTC for comparison
+      const slotStartUTC = zonedTimeToUtc(currentTime, timezone);
+      const slotEndUTC = zonedTimeToUtc(slotEnd, timezone);
 
-      // Check if slot conflicts with any existing meeting
-      const isConflict = meetings.some(meeting => {
+      // Check for conflicts
+      const hasConflict = meetings.some(meeting => {
         const meetingStart = new Date(meeting.startTime);
         const meetingEnd = addMinutes(meetingStart, meeting.duration);
+        
         return (
-          (utcSlotStart >= meetingStart && utcSlotStart < meetingEnd) ||
-          (utcSlotEnd > meetingStart && utcSlotEnd <= meetingEnd)
+          (slotStartUTC >= meetingStart && slotStartUTC < meetingEnd) ||
+          (slotEndUTC > meetingStart && slotEndUTC <= meetingEnd)
         );
       });
 
-      if (!isConflict) {
+      if (!hasConflict) {
         availableSlots.push({
-          startTime: utcSlotStart.toISOString(),
-          endTime: utcSlotEnd.toISOString()
+          startTime: slotStartUTC.toISOString(),
+          endTime: slotEndUTC.toISOString()
         });
       }
 
-      currentTime = slotEndTime;
+      currentTime = slotEnd;
     }
 
     res.json({ availableSlots });
