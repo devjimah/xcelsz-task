@@ -1,12 +1,18 @@
 import { getApiUrl } from '../config/api';
 
+const handleResponse = async (response) => {
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+  }
+  const data = await response.json();
+  return { data };
+};
+
 const apiClient = {
   async get(path) {
     const response = await fetch(getApiUrl(`api/${path}`));
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return response.json();
+    return handleResponse(response);
   },
 
   async post(path, data) {
@@ -17,10 +23,7 @@ const apiClient = {
       },
       body: JSON.stringify(data),
     });
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return response.json();
+    return handleResponse(response);
   },
 
   async put(path, data) {
@@ -31,20 +34,14 @@ const apiClient = {
       },
       body: JSON.stringify(data),
     });
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return response.json();
+    return handleResponse(response);
   },
 
   async delete(path) {
     const response = await fetch(getApiUrl(`api/${path}`), {
       method: 'DELETE',
     });
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return response.json();
+    return handleResponse(response);
   },
 };
 
