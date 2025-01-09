@@ -1,7 +1,7 @@
 const db = require('../models');
 const { Meeting, Notification } = db;
 const { Op } = db.Sequelize;
-const { startOfDay, endOfDay, addMinutes, format, parseISO } = require('date-fns');
+const { startOfDay, endOfDay, addMinutes, format, parseISO, zonedTimeToUtc, utcToZonedTime } = require('date-fns-tz');
 
 exports.getMeetings = async (req, res) => {
   try {
@@ -114,9 +114,15 @@ exports.deleteMeeting = async (req, res) => {
 
 exports.getAvailability = async (req, res) => {
   try {
-    const { userId, date } = req.query;
+    const { userId, date, timezone = 'UTC' } = req.query;
     const selectedDate = parseISO(date);
     
+    // Convert start and end of day to UTC based on user's timezone
+    const zonedStartOfDay = startOfDay(selectedDate);
+    const zonedEndOfDay = endOfDay(selectedDate);
+    const utcStartOfDay = zonedTimeToUtc(zonedStartOfDay, timezone);
+    const utcEndOfDay = zonedTimeToUtc(zonedEndOfDay, timezone);
+
     // Get all meetings for the user on the selected date
     const meetings = await Meeting.findAll({
       where: {
@@ -125,42 +131,45 @@ exports.getAvailability = async (req, res) => {
           { participantId: userId }
         ],
         startTime: {
-          [Op.between]: [
-            startOfDay(selectedDate),
-            endOfDay(selectedDate)
-          ]
+          [Op.between]: [utcStartOfDay, utcEndOfDay]
         }
       },
       order: [['startTime', 'ASC']]
     });
 
-    // Define business hours (9 AM to 5 PM)
+    // Define business hours (9 AM to 5 PM) in user's timezone
     const businessStart = 9;
     const businessEnd = 17;
     const slotDuration = 30; // minutes
     const availableSlots = [];
 
-    // Generate all possible time slots
-    let currentTime = new Date(selectedDate);
+    // Generate all possible time slots in user's timezone
+    let currentTime = utcToZonedTime(utcStartOfDay, timezone);
     currentTime.setHours(businessStart, 0, 0, 0);
+    const endTime = new Date(currentTime);
+    endTime.setHours(businessEnd, 0, 0, 0);
 
-    while (currentTime.getHours() < businessEnd) {
+    while (currentTime < endTime) {
       const slotEndTime = addMinutes(currentTime, slotDuration);
       
+      // Convert slot times to UTC for comparison with meetings
+      const utcSlotStart = zonedTimeToUtc(currentTime, timezone);
+      const utcSlotEnd = zonedTimeToUtc(slotEndTime, timezone);
+
       // Check if slot conflicts with any existing meeting
       const isConflict = meetings.some(meeting => {
         const meetingStart = new Date(meeting.startTime);
         const meetingEnd = addMinutes(meetingStart, meeting.duration);
         return (
-          (currentTime >= meetingStart && currentTime < meetingEnd) ||
-          (slotEndTime > meetingStart && slotEndTime <= meetingEnd)
+          (utcSlotStart >= meetingStart && utcSlotStart < meetingEnd) ||
+          (utcSlotEnd > meetingStart && utcSlotEnd <= meetingEnd)
         );
       });
 
       if (!isConflict) {
         availableSlots.push({
-          startTime: currentTime.toISOString(),
-          endTime: slotEndTime.toISOString()
+          startTime: utcSlotStart.toISOString(),
+          endTime: utcSlotEnd.toISOString()
         });
       }
 

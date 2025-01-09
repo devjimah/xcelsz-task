@@ -25,7 +25,10 @@ export default function AvailabilityPicker({ onTimeSelect, userId }) {
     setError('');
     try {
       const formattedDate = format(date, 'yyyy-MM-dd');
-      const { data } = await apiClient.get(`meetings/availability?userId=${userId}&date=${formattedDate}`);
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const { data } = await apiClient.get(
+        `meetings/availability?userId=${userId}&date=${formattedDate}&timezone=${timezone}`
+      );
       setAvailableSlots(data.availableSlots || []);
     } catch (err) {
       console.error('Error fetching availability:', err);
