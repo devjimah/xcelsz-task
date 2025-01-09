@@ -1,7 +1,7 @@
 const db = require('../models');
 const { Meeting, Notification } = db;
 const { Op } = db.Sequelize;
-const { startOfDay, endOfDay, addMinutes, parseISO, addHours, subHours } = require('date-fns');
+const { startOfDay, endOfDay, addMinutes, parseISO } = require('date-fns');
 
 exports.getMeetings = async (req, res) => {
   try {
@@ -19,20 +19,6 @@ exports.getMeetings = async (req, res) => {
   } catch (error) {
     console.error('Error fetching meetings:', error);
     res.status(500).json({ error: 'Failed to fetch meetings' });
-  }
-};
-
-exports.getMeeting = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const meeting = await Meeting.findByPk(id);
-    if (!meeting) {
-      return res.status(404).json({ error: 'Meeting not found' });
-    }
-    res.json({ meeting });
-  } catch (error) {
-    console.error('Error fetching meeting:', error);
-    res.status(500).json({ error: 'Failed to fetch meeting' });
   }
 };
 

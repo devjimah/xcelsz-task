@@ -2,22 +2,19 @@ const express = require('express');
 const router = express.Router();
 const meetingsController = require('../controllers/meetings');
 
-// GET /api/meetings
+// Get all meetings for a user
 router.get('/', meetingsController.getMeetings);
 
-// GET /api/meetings/availability
+// Get available time slots
 router.get('/availability', meetingsController.getAvailability);
 
-// GET /api/meetings/:id
-router.get('/:id', meetingsController.getMeeting);
-
-// POST /api/meetings
+// Create a new meeting
 router.post('/', meetingsController.createMeeting);
 
-// PUT /api/meetings/:id
+// Update a meeting
 router.put('/:id', meetingsController.updateMeeting);
 
-// DELETE /api/meetings/:id
+// Delete a meeting
 router.delete('/:id', meetingsController.deleteMeeting);
 
 module.exports = router;
