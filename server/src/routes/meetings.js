@@ -5,6 +5,9 @@ const meetingsController = require('../controllers/meetings');
 // GET /api/meetings
 router.get('/', meetingsController.getMeetings);
 
+// GET /api/meetings/availability
+router.get('/availability', meetingsController.getAvailability);
+
 // GET /api/meetings/:id
 router.get('/:id', meetingsController.getMeeting);
 

@@ -1,12 +1,14 @@
 const db = require('../models');
 const { Meeting, Notification } = db;
+const { Op } = db.Sequelize;
+const { startOfDay, endOfDay, addMinutes, format, parseISO } = require('date-fns');
 
 exports.getMeetings = async (req, res) => {
   try {
     const { userId } = req.query;
     const meetings = await Meeting.findAll({
       where: {
-        [db.Sequelize.Op.or]: [
+        [Op.or]: [
           { hostId: userId },
           { participantId: userId }
         ]
@@ -103,9 +105,71 @@ exports.deleteMeeting = async (req, res) => {
     });
 
     await meeting.destroy();
-    res.status(204).end();
+    res.json({ message: 'Meeting deleted successfully' });
   } catch (error) {
     console.error('Error deleting meeting:', error);
     res.status(500).json({ error: 'Failed to delete meeting' });
+  }
+};
+
+exports.getAvailability = async (req, res) => {
+  try {
+    const { userId, date } = req.query;
+    const selectedDate = parseISO(date);
+    
+    // Get all meetings for the user on the selected date
+    const meetings = await Meeting.findAll({
+      where: {
+        [Op.or]: [
+          { hostId: userId },
+          { participantId: userId }
+        ],
+        startTime: {
+          [Op.between]: [
+            startOfDay(selectedDate),
+            endOfDay(selectedDate)
+          ]
+        }
+      },
+      order: [['startTime', 'ASC']]
+    });
+
+    // Define business hours (9 AM to 5 PM)
+    const businessStart = 9;
+    const businessEnd = 17;
+    const slotDuration = 30; // minutes
+    const availableSlots = [];
+
+    // Generate all possible time slots
+    let currentTime = new Date(selectedDate);
+    currentTime.setHours(businessStart, 0, 0, 0);
+
+    while (currentTime.getHours() < businessEnd) {
+      const slotEndTime = addMinutes(currentTime, slotDuration);
+      
+      // Check if slot conflicts with any existing meeting
+      const isConflict = meetings.some(meeting => {
+        const meetingStart = new Date(meeting.startTime);
+        const meetingEnd = addMinutes(meetingStart, meeting.duration);
+        return (
+          (currentTime >= meetingStart && currentTime < meetingEnd) ||
+          (slotEndTime > meetingStart && slotEndTime <= meetingEnd)
+        );
+      });
+
+      if (!isConflict) {
+        availableSlots.push({
+          startTime: currentTime.toISOString(),
+          endTime: slotEndTime.toISOString()
+        });
+      }
+
+      currentTime = slotEndTime;
+    }
+
+    res.json({ availableSlots });
+  } catch (error) {
+    console.error('Error getting availability:', error);
+    res.status(500).json({ error: 'Failed to get availability' });
   }
 };
