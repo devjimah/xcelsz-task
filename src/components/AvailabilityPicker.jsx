@@ -11,7 +11,7 @@ import {
 import { DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import apiClient from '@/utils/apiClient';
 
 export default function AvailabilityPicker({ onTimeSelect, userId }) {
@@ -25,10 +25,7 @@ export default function AvailabilityPicker({ onTimeSelect, userId }) {
     setError('');
     try {
       const formattedDate = format(date, 'yyyy-MM-dd');
-      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const { data } = await apiClient.get(
-        `meetings/availability?userId=${userId}&date=${formattedDate}&timezone=${timezone}`
-      );
+      const { data } = await apiClient.get(`meetings/availability?userId=${userId}&date=${formattedDate}`);
       setAvailableSlots(data.availableSlots || []);
     } catch (err) {
       console.error('Error fetching availability:', err);
@@ -52,7 +49,7 @@ export default function AvailabilityPicker({ onTimeSelect, userId }) {
   };
 
   const handleTimeSelect = (slot) => {
-    onTimeSelect(new Date(slot.startTime));
+    onTimeSelect(parseISO(slot.startTime));
   };
 
   return (
@@ -98,7 +95,7 @@ export default function AvailabilityPicker({ onTimeSelect, userId }) {
                   }
                 }}
               >
-                {format(new Date(slot.startTime), 'h:mm a')}
+                {format(parseISO(slot.startTime), 'h:mm a')}
               </Button>
             </Grid>
           ))}
