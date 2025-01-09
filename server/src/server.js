@@ -6,10 +6,25 @@ const db = require('./models');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// CORS configuration
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production' 
+    ? ['https://xcelsz-task.vercel.app', 'http://localhost:3000'] 
+    : 'http://localhost:3000',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Root route
+app.get('/', (req, res) => {
+  res.json({ message: 'Welcome to XcelSz API' });
+});
 
 // Routes
 app.use('/api/meetings', require('./routes/meetings'));
