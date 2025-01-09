@@ -26,6 +26,7 @@ import {
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import UpdateMeetingForm from './UpdateMeetingForm';
+import apiClient from '@/utils/apiClient';
 
 export default function MeetingsList({ meetings = [], onDelete, onRefresh }) {
   const [loading, setLoading] = useState(false);
@@ -37,21 +38,10 @@ export default function MeetingsList({ meetings = [], onDelete, onRefresh }) {
     setError('');
     setLoading(true);
     try {
-      // Update UI optimistically
       const meetingToDelete = meetings.find(m => m.id === id);
       const meetingTitle = meetingToDelete?.title || 'Meeting';
 
-      // Call delete endpoint
-      const response = await fetch(`/api/meetings/${id}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to cancel meeting');
-      }
-
-      // Trigger refresh through parent
+      await apiClient.delete(`meetings/${id}`);
       onDelete?.(id);
     } catch (err) {
       console.error('Error deleting meeting:', err);
@@ -65,20 +55,7 @@ export default function MeetingsList({ meetings = [], onDelete, onRefresh }) {
     setError('');
     setLoading(true);
     try {
-      const response = await fetch(`/api/meetings/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updatedData),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to update meeting');
-      }
-
-      // Close form and refresh meetings
+      await apiClient.put(`meetings/${id}`, updatedData);
       setShowUpdateForm(false);
       setSelectedMeeting(null);
       onRefresh?.();
@@ -95,89 +72,82 @@ export default function MeetingsList({ meetings = [], onDelete, onRefresh }) {
     setShowUpdateForm(true);
   };
 
+  const getMeetingStatusChip = (meeting) => {
+    const now = new Date();
+    const startTime = new Date(meeting.startTime);
+    const endTime = new Date(startTime.getTime() + meeting.duration * 60000);
+
+    if (now > endTime) {
+      return <Chip label="Completed" color="default" size="small" />;
+    } else if (now >= startTime && now <= endTime) {
+      return <Chip label="In Progress" color="primary" size="small" />;
+    } else {
+      return <Chip label="Upcoming" color="success" size="small" />;
+    }
+  };
+
   return (
     <Box sx={{ width: '100%' }}>
       <Stack spacing={3}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box>
-            <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
-              Scheduled Meetings
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Your upcoming meetings
-            </Typography>
-          </Box>
-          <Button
-            startIcon={<RefreshIcon />}
+          <Typography variant="h6" component="h2">
+            Your Meetings
+          </Typography>
+          <IconButton
             onClick={onRefresh}
             disabled={loading}
-            sx={{ textTransform: 'none' }}
+            color="primary"
+            aria-label="refresh meetings"
           >
-            Refresh
-          </Button>
+            <RefreshIcon />
+          </IconButton>
         </Box>
 
-        <Divider />
-
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert severity="error" onClose={() => setError('')}>
             {error}
           </Alert>
         )}
 
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+        {loading && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
             <CircularProgress />
           </Box>
-        ) : meetings.length === 0 ? (
-          <Box 
-            sx={{ 
-              py: 6, 
-              display: 'flex', 
-              flexDirection: 'column', 
-              alignItems: 'center',
-              bgcolor: 'grey.50',
-              borderRadius: 2
-            }}
-          >
-            <EventIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
-            <Typography variant="h6" color="text.secondary">
-              No meetings scheduled
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Schedule a meeting to get started
-            </Typography>
-          </Box>
+        )}
+
+        {!loading && meetings.length === 0 ? (
+          <Card sx={{ bgcolor: 'grey.50' }}>
+            <CardContent sx={{ textAlign: 'center', py: 4 }}>
+              <Typography color="text.secondary">
+                No meetings scheduled
+              </Typography>
+            </CardContent>
+          </Card>
         ) : (
           <Stack spacing={2}>
             {meetings.map((meeting) => (
-              <Card 
-                key={meeting.id} 
-                sx={{ 
-                  borderRadius: 2,
-                  '&:hover': {
-                    boxShadow: 3,
-                    transform: 'translateY(-2px)',
-                    transition: 'all 0.2s ease-in-out'
-                  }
-                }}
-              >
+              <Card key={meeting.id}>
                 <CardContent>
                   <Stack spacing={2}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <Typography variant="h6" component="div">
-                        {meeting.title}
-                      </Typography>
+                      <Stack spacing={1}>
+                        <Typography variant="h6" component="h3">
+                          {meeting.title}
+                        </Typography>
+                        {getMeetingStatusChip(meeting)}
+                      </Stack>
                       <Box>
-                        <IconButton 
+                        <IconButton
                           onClick={() => handleEditClick(meeting)}
-                          color="primary"
-                          sx={{ mr: 1 }}
+                          aria-label="edit meeting"
+                          size="small"
                         >
                           <EditIcon />
                         </IconButton>
-                        <IconButton 
+                        <IconButton
                           onClick={() => handleDelete(meeting.id)}
+                          aria-label="delete meeting"
+                          size="small"
                           color="error"
                         >
                           <DeleteIcon />
@@ -185,37 +155,28 @@ export default function MeetingsList({ meetings = [], onDelete, onRefresh }) {
                       </Box>
                     </Box>
 
-                    {meeting.description && (
-                      <Box sx={{ display: 'flex', alignItems: 'center', color: 'text.secondary' }}>
-                        <DescriptionIcon sx={{ mr: 1, fontSize: 20 }} />
+                    <Stack spacing={1} sx={{ color: 'text.secondary' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <EventIcon fontSize="small" />
                         <Typography variant="body2">
-                          {meeting.description}
+                          {format(new Date(meeting.startTime), 'MMMM d, yyyy')}
                         </Typography>
                       </Box>
-                    )}
-
-                    <Stack direction="row" spacing={3}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <EventIcon sx={{ mr: 1, fontSize: 20, color: 'primary.main' }} />
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <AccessTimeIcon fontSize="small" />
                         <Typography variant="body2">
-                          {format(new Date(meeting.startTime), 'PPP')}
+                          {format(new Date(meeting.startTime), 'h:mm a')} ({meeting.duration} minutes)
                         </Typography>
                       </Box>
-
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <AccessTimeIcon sx={{ mr: 1, fontSize: 20, color: 'primary.main' }} />
-                        <Typography variant="body2">
-                          {format(new Date(meeting.startTime), 'p')} ({meeting.duration} mins)
-                        </Typography>
-                      </Box>
+                      {meeting.description && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <DescriptionIcon fontSize="small" />
+                          <Typography variant="body2">
+                            {meeting.description}
+                          </Typography>
+                        </Box>
+                      )}
                     </Stack>
-
-                    <Chip 
-                      label={meeting.status} 
-                      color={meeting.status === 'scheduled' ? 'success' : 'default'}
-                      size="small"
-                      sx={{ alignSelf: 'flex-start' }}
-                    />
                   </Stack>
                 </CardContent>
               </Card>
@@ -224,17 +185,23 @@ export default function MeetingsList({ meetings = [], onDelete, onRefresh }) {
         )}
       </Stack>
 
-      {selectedMeeting && (
-        <UpdateMeetingForm
-          meeting={selectedMeeting}
-          open={showUpdateForm}
-          onClose={() => {
-            setShowUpdateForm(false);
-            setSelectedMeeting(null);
-          }}
-          onUpdate={(data) => handleUpdate(selectedMeeting.id, data)}
-        />
-      )}
+      <Dialog
+        open={showUpdateForm}
+        onClose={() => setShowUpdateForm(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Update Meeting</DialogTitle>
+        <DialogContent>
+          {selectedMeeting && (
+            <UpdateMeetingForm
+              meeting={selectedMeeting}
+              onSubmit={(data) => handleUpdate(selectedMeeting.id, data)}
+              onCancel={() => setShowUpdateForm(false)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 }
