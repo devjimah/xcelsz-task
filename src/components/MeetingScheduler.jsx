@@ -17,6 +17,7 @@ import {
   Description as DescriptionIcon,
   AccessTime as AccessTimeIcon
 } from '@mui/icons-material';
+import apiClient from '@/utils/apiClient';
 
 export default function MeetingScheduler({ userId, participantId, onScheduled }) {
   const [title, setTitle] = useState('');
@@ -32,27 +33,15 @@ export default function MeetingScheduler({ userId, participantId, onScheduled })
     setLoading(true);
 
     try {
-      const response = await fetch('/api/meetings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title,
-          description,
-          startTime: startTime.toISOString(),
-          duration,
-          hostId: userId,
-          participantId,
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        }),
+      const data = await apiClient.post('meetings', {
+        title,
+        description,
+        startTime: startTime.toISOString(),
+        duration,
+        hostId: userId,
+        participantId,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to schedule meeting');
-      }
 
       onScheduled?.(data);
       setTitle('');
@@ -60,7 +49,7 @@ export default function MeetingScheduler({ userId, participantId, onScheduled })
       setStartTime(null);
       setDuration(30);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Failed to schedule meeting');
     } finally {
       setLoading(false);
     }
@@ -123,32 +112,29 @@ export default function MeetingScheduler({ userId, participantId, onScheduled })
           value={startTime}
           onChange={setStartTime}
           required
-          minDateTime={new Date()}
-          sx={{
-            width: '100%',
-            '& .MuiOutlinedInput-root': { borderRadius: 2 }
-          }}
           slotProps={{
             textField: {
+              fullWidth: true,
+              required: true,
               InputProps: {
                 startAdornment: (
                   <InputAdornment position="start">
                     <ScheduleIcon color="primary" />
                   </InputAdornment>
                 ),
-              }
+              },
+              sx: { '& .MuiOutlinedInput-root': { borderRadius: 2 } }
             }
           }}
         />
 
         <TextField
           fullWidth
-          label="Duration (minutes)"
           type="number"
+          label="Duration (minutes)"
           value={duration}
-          onChange={(e) => setDuration(parseInt(e.target.value))}
+          onChange={(e) => setDuration(Number(e.target.value))}
           required
-          inputProps={{ min: 15, step: 15 }}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
@@ -163,7 +149,7 @@ export default function MeetingScheduler({ userId, participantId, onScheduled })
           type="submit"
           variant="contained"
           size="large"
-          disabled={loading}
+          disabled={loading || !title || !startTime}
           sx={{
             mt: 2,
             height: 48,

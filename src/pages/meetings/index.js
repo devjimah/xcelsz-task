@@ -13,6 +13,7 @@ import MeetingsCalendar from '@/components/MeetingsCalendar';
 import MeetingsList from '@/components/MeetingsList';
 import Layout from '@/components/Layout';
 import { useRouter } from 'next/router';
+import apiClient from '@/utils/apiClient';
 
 function TabPanel({ children, value, index, ...other }) {
   return (
@@ -43,25 +44,31 @@ export default function MeetingsPage() {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`/api/meetings?userId=${userId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch meetings');
-      }
-      const data = await response.json();
+      const data = await apiClient.get(`meetings?userId=${userId}`);
       setMeetings(data.meetings || []);
     } catch (err) {
       console.error('Error fetching meetings:', err);
-      setError('Failed to load meetings');
-      setMeetings([]);
+      setError('Failed to load meetings. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleDeleteMeeting = async (meetingId) => {
+    try {
+      await apiClient.delete(`meetings/${meetingId}`);
+      // Refetch meetings after successful deletion
+      setTimeout(fetchMeetings, 500);
+    } catch (error) {
+      console.error('Error deleting meeting:', error);
+      setError('Failed to delete meeting. Please try again.');
+    }
+  };
+
   useEffect(() => {
     fetchMeetings();
-    // Set up polling for real-time updates
-    const interval = setInterval(fetchMeetings, 30000); // Poll every 30 seconds
+    // Poll for updates every 30 seconds
+    const interval = setInterval(fetchMeetings, 30000);
     return () => clearInterval(interval);
   }, [userId]);
 
@@ -69,46 +76,23 @@ export default function MeetingsPage() {
     setActiveTab(newValue);
   };
 
-  const handleNewMeeting = () => {
-    router.push('/meetings/new');
-  };
-
-  const handleDelete = async (meetingId) => {
-    try {
-      const response = await fetch(`/api/meetings/${meetingId}`, {
-        method: 'DELETE'
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to delete meeting');
-      }
-
-      // Update local state immediately
-      setMeetings(prevMeetings => prevMeetings.filter(m => m.id !== meetingId));
-      
-      // Then refresh to ensure sync with server
-      setTimeout(fetchMeetings, 500);
-    } catch (err) {
-      console.error('Error deleting meeting:', err);
-      setError(err.message);
-    }
-  };
-
   return (
     <Layout>
-      <Box>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-          <Typography variant="h4" component="h1">
-            Meetings
-          </Typography>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleNewMeeting}
-          >
-            New Meeting
-          </Button>
+      <Box sx={{ width: '100%' }}>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Tabs value={activeTab} onChange={handleTabChange}>
+              <Tab label="Calendar View" />
+              <Tab label="List View" />
+            </Tabs>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => router.push('/meetings/new')}
+            >
+              New Meeting
+            </Button>
+          </Box>
         </Box>
 
         {error && (
@@ -117,37 +101,26 @@ export default function MeetingsPage() {
           </Alert>
         )}
 
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs value={activeTab} onChange={handleTabChange}>
-            <Tab label="Calendar View" />
-            <Tab label="List View" />
-          </Tabs>
-        </Box>
-
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+        {loading && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
             <CircularProgress />
           </Box>
-        ) : (
-          <>
-            <TabPanel value={activeTab} index={0}>
-              <MeetingsCalendar 
-                userId={userId}
-                meetings={meetings}
-                onDelete={handleDelete}
-                onRefresh={fetchMeetings}
-              />
-            </TabPanel>
-
-            <TabPanel value={activeTab} index={1}>
-              <MeetingsList 
-                meetings={meetings}
-                onDelete={handleDelete}
-                onRefresh={fetchMeetings}
-              />
-            </TabPanel>
-          </>
         )}
+
+        <TabPanel value={activeTab} index={0}>
+          <MeetingsCalendar 
+            meetings={meetings}
+            onDelete={handleDeleteMeeting}
+            onRefresh={fetchMeetings}
+          />
+        </TabPanel>
+        <TabPanel value={activeTab} index={1}>
+          <MeetingsList 
+            meetings={meetings}
+            onDelete={handleDeleteMeeting}
+            onRefresh={fetchMeetings}
+          />
+        </TabPanel>
       </Box>
     </Layout>
   );
